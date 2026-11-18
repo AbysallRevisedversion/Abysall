@@ -1,5 +1,3 @@
-
-
 --	Functions.Notify({Title = "Used For Notifications."})
 -- 	Disabled = not Functions.CheckCompatability({"require"}), DisabledTooltip = Globals.IncompatibleMessage
 -- 	Risky = Floor ~= "Mines" (Means it only works on mines)
@@ -9401,4 +9399,4 @@ end)
 while not Globals.MainUI do task.wait() end
 Abysall.Interface.ApplySettingsTab(Window)
 Functions.Notify({ Title = "加载成功，用时 " .. math.floor((tick() - LoadStart) * 1000) / 1000 .. " 秒。" , Body = "按 " .. tostring(Options.MenuKeybind.Value) .. " 键开关 UI。"})
--- Six seven
+-- Seven

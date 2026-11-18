@@ -1431,7 +1431,7 @@ local Tabs = {
 	Archives = Window:AddTab("档案馆", "rbxassetid://104508835882225"),
 	Stairwell = Window:AddTab("楼梯间", "rbxassetid://80017304328364"),
 	Halloween = Window:AddTab("万圣节", "rbxassetid://101034055693026"),
-	Utility = Window:AddTab("实用 (Utility)", "rbxassetid://80017304328364"),
+	Utility = Window:AddTab("实用", "rbxassetid://80017304328364"),
 }
 
 Groupboxes.General_Character = Tabs.General:AddLeftGroupbox("角色")
@@ -3074,60 +3074,119 @@ Groupboxes.Archives_Misc:AddToggle("BypassDronesStampede", { Text = "停止时�
 Groupboxes.Archives_Misc:AddToggle("HonchoCorrectBoxESP", { Text = "正确箱子透视/自动交互", Default = false, Tooltip = "在 Honcho 流程中透视正确的档案馆箱子并自动投递。" })
 Toggles.HonchoCorrectBoxESP:AddColorPicker("HonchoBoxESPColor", { Text = "正确箱子透视", Default = Color3.fromRGB(0, 255, 0), Transparency = 0 })
 Groupboxes.Archives_Misc:AddDivider()
-Groupboxes.Archives_Misc:AddToggle("ArchivesESPToggle", {
-	Text = "档案馆物件透视 (Archives ESP)", Default = false,
-	Tooltip = "按下方列表勾选，透视档案馆物件：贩卖机、饮水机、大型打印机、垃圾桶、硬币卷、终端。"
-})
-Toggles.ArchivesESPToggle:AddColorPicker("ArchivesESPColor", { Text = "Archives ESP", Default = Color3.fromRGB(170, 0, 255), Transparency = 0 })
-Groupboxes.Archives_Misc:AddDropdown("ArchivesESPOptions", {
-	Text = "透视列表",
-	Values = { "Vending Machine", "Water Cooler", "Large Printer", "Trashcan", "Coin Roll", "Terminal" },
-	Default = { "Vending Machine", "Water Cooler", "Large Printer", "Trashcan", "Coin Roll", "Terminal" },
-	Multi = true,
-	AllowNull = true
-})
+-- 档案馆物件透视：每类独立开关 + 独立调色（单一名称，不设勾选）
 
-local ArchivesESPGroups = {
-	{ List = function() return Objects.VendingMachines end, Label = "Vending Machine" },
-	{ List = function() return Objects.WaterCoolers end,   Label = "Water Cooler" },
-	{ List = function() return Objects.LargePrinters end,  Label = "Large Printer" },
-	{ List = function() return Objects.Trashcans end,      Label = "Trashcan" },
-	{ List = function() return Objects.CoinRolls end,      Label = "Coin Roll" },
-	{ List = function() return Objects.Terminals end,      Label = "Terminal" },
-}
+-- 垃圾桶透视仅在指定游戏中生效
+local ArchivesESP_PlaceGate = 6839171747
 
-local function ArchivesESPEnabledFor(Label)
-	if not Toggles.ArchivesESPToggle.Value then
-		return false
+Groupboxes.Archives_Misc:AddToggle("VendingMachineESPToggle", {
+	Text = "贩卖机透视", Default = false,
+	Tooltip = "高亮档案馆内的贩卖机。"
+})
+Toggles.VendingMachineESPToggle:AddColorPicker("VendingMachineESPColor", { Text = "Vending Machine", Default = Color3.fromRGB(170, 0, 255), Transparency = 0 })
+Groupboxes.Archives_Misc:AddToggle("WaterCoolerESPToggle", {
+	Text = "饮水机透视", Default = false,
+	Tooltip = "高亮档案馆内的饮水机。"
+})
+Toggles.WaterCoolerESPToggle:AddColorPicker("WaterCoolerESPColor", { Text = "Water Cooler", Default = Color3.fromRGB(0, 200, 255), Transparency = 0 })
+Groupboxes.Archives_Misc:AddToggle("LargePrinterESPToggle", {
+	Text = "大型打印机透视", Default = false,
+	Tooltip = "高亮档案馆内的大型打印机。"
+})
+Toggles.LargePrinterESPToggle:AddColorPicker("LargePrinterESPColor", { Text = "Large Printer", Default = Color3.fromRGB(255, 170, 0), Transparency = 0 })
+Groupboxes.Archives_Misc:AddToggle("TrashcanESPToggle", {
+	Text = "垃圾桶透视", Default = false,
+	Tooltip = "高亮档案馆内的垃圾桶。仅在房间代码 6839171747 的游戏中生效。"
+})
+Toggles.TrashcanESPToggle:AddColorPicker("TrashcanESPColor", { Text = "Trashcan", Default = Color3.fromRGB(120, 255, 120), Transparency = 0 })
+Groupboxes.Archives_Misc:AddToggle("CoinRollESPToggle", {
+	Text = "硬币卷透视", Default = false,
+	Tooltip = "高亮档案馆内的硬币卷。"
+})
+Toggles.CoinRollESPToggle:AddColorPicker("CoinRollESPColor", { Text = "Coin Roll", Default = Color3.fromRGB(255, 255, 0), Transparency = 0 })
+Groupboxes.Archives_Misc:AddToggle("TerminalESPToggle", {
+	Text = "终端透视", Default = false,
+	Tooltip = "高亮档案馆内的终端机。"
+})
+Toggles.TerminalESPToggle:AddColorPicker("TerminalESPColor", { Text = "Terminal", Default = Color3.fromRGB(255, 80, 80), Transparency = 0 })
+local function ApplyArchivesESP_VendingMachine()
+	for _, Object in Objects.VendingMachines do
+		if Toggles.VendingMachineESPToggle.Value then
+			Functions.AddESP({ Object = Object, Text = "Vending Machine", Color = Options.VendingMachineESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil)
+		else
+			Functions.RemoveESP(Object)
+		end
 	end
-	local Opts = Options.ArchivesESPOptions.Value
-	if type(Opts) ~= "table" then
-		return false
-	end
-	local V = Opts[Label]
-	return V ~= nil and V ~= false
 end
-
-local function ApplyArchivesESP()
-	for _, Group in ipairs(ArchivesESPGroups) do
-		for _, Object in Group.List() do
-			if ArchivesESPEnabledFor(Group.Label) then
-				Functions.AddESP({ Object = Object, Text = Group.Label, Color = Options.ArchivesESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil)
-			else
-				Functions.RemoveESP(Object)
-			end
+local function ApplyArchivesESP_WaterCooler()
+	for _, Object in Objects.WaterCoolers do
+		if Toggles.WaterCoolerESPToggle.Value then
+			Functions.AddESP({ Object = Object, Text = "Water Cooler", Color = Options.WaterCoolerESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil)
+		else
+			Functions.RemoveESP(Object)
+		end
+	end
+end
+local function ApplyArchivesESP_LargePrinter()
+	for _, Object in Objects.LargePrinters do
+		if Toggles.LargePrinterESPToggle.Value then
+			Functions.AddESP({ Object = Object, Text = "Large Printer", Color = Options.LargePrinterESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil)
+		else
+			Functions.RemoveESP(Object)
+		end
+	end
+end
+local function ApplyArchivesESP_Trashcan()
+	for _, Object in Objects.Trashcans do
+		if Toggles.TrashcanESPToggle.Value and game.PlaceId == ArchivesESP_PlaceGate then
+			Functions.AddESP({ Object = Object, Text = "Trashcan", Color = Options.TrashcanESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil)
+		else
+			Functions.RemoveESP(Object)
+		end
+	end
+end
+local function ApplyArchivesESP_CoinRoll()
+	for _, Object in Objects.CoinRolls do
+		if Toggles.CoinRollESPToggle.Value then
+			Functions.AddESP({ Object = Object, Text = "Coin Roll", Color = Options.CoinRollESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil)
+		else
+			Functions.RemoveESP(Object)
+		end
+	end
+end
+local function ApplyArchivesESP_Terminal()
+	for _, Object in Objects.Terminals do
+		if Toggles.TerminalESPToggle.Value then
+			Functions.AddESP({ Object = Object, Text = "Terminal", Color = Options.TerminalESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil)
+		else
+			Functions.RemoveESP(Object)
 		end
 	end
 end
 
-Toggles.ArchivesESPToggle:OnChanged(ApplyArchivesESP)
-Options.ArchivesESPOptions:OnChanged(ApplyArchivesESP)
-Options.ArchivesESPColor:OnChanged(function(Value)
-	for _, Group in ipairs(ArchivesESPGroups) do
-		for _, Object in Group.List() do
-			Abysall.ESPLibrary:UpdateObjectColor(Object, Value)
-		end
-	end
+Toggles.VendingMachineESPToggle:OnChanged(ApplyArchivesESP_VendingMachine)
+Options.VendingMachineESPColor:OnChanged(function(Value)
+	for _, Object in Objects.VendingMachines do Abysall.ESPLibrary:UpdateObjectColor(Object, Value) end
+end)
+Toggles.WaterCoolerESPToggle:OnChanged(ApplyArchivesESP_WaterCooler)
+Options.WaterCoolerESPColor:OnChanged(function(Value)
+	for _, Object in Objects.WaterCoolers do Abysall.ESPLibrary:UpdateObjectColor(Object, Value) end
+end)
+Toggles.LargePrinterESPToggle:OnChanged(ApplyArchivesESP_LargePrinter)
+Options.LargePrinterESPColor:OnChanged(function(Value)
+	for _, Object in Objects.LargePrinters do Abysall.ESPLibrary:UpdateObjectColor(Object, Value) end
+end)
+Toggles.TrashcanESPToggle:OnChanged(ApplyArchivesESP_Trashcan)
+Options.TrashcanESPColor:OnChanged(function(Value)
+	for _, Object in Objects.Trashcans do Abysall.ESPLibrary:UpdateObjectColor(Object, Value) end
+end)
+Toggles.CoinRollESPToggle:OnChanged(ApplyArchivesESP_CoinRoll)
+Options.CoinRollESPColor:OnChanged(function(Value)
+	for _, Object in Objects.CoinRolls do Abysall.ESPLibrary:UpdateObjectColor(Object, Value) end
+end)
+Toggles.TerminalESPToggle:OnChanged(ApplyArchivesESP_Terminal)
+Options.TerminalESPColor:OnChanged(function(Value)
+	for _, Object in Objects.Terminals do Abysall.ESPLibrary:UpdateObjectColor(Object, Value) end
 end)
 
 
@@ -4697,7 +4756,7 @@ DoorNumberCorner.Parent = DoorNumberLabel
 DoorNumberLabel.Parent = Container
 
 Groupboxes.Utility_Info:AddToggle("ShowDoorNumberToggle", {
-	Text = "显示当前门牌号 (Door Number)", Default = false,
+	Text = "显示当前门牌号", Default = false,
 	Tooltip = "在屏幕顶部显示当前房间与下一扇门的门牌号。"
 })
 
@@ -4723,11 +4782,11 @@ task.spawn(function()
 end)
 
 Groupboxes.Utility_Path:AddToggle("NextDoorPathESP", {
-	Text = "下一扇门路径透视 (Next Door Path)", Default = false,
-	Tooltip = "绘制到下一扇未开门的实时路径。默认每秒重扫（间隔可调），在独立协程运行不卡顿。"
+	Text = "下一扇门路径透视", Default = false,
+	Tooltip = "绘制到下一扇未开门的实时路径。寻路结果缓存，渲染每 0.01 秒跟随角色，不卡顿。"
 })
 Toggles.NextDoorPathESP:AddColorPicker("NextDoorPathESPColor", { Text = "路径颜色", Default = Color3.fromRGB(0, 255, 128), Transparency = 0 })
-Groupboxes.Utility_Path:AddSlider("NextDoorPathScanRate", { Text = "扫描间隔（秒）", Min = 0.2, Max = 5, Default = 1, Rounding = 1, Compact = true })
+Groupboxes.Utility_Path:AddSlider("NextDoorPathScanRate", { Text = "重算间隔（秒）", Min = 0.05, Max = 5, Default = 0.5, Rounding = 2, Compact = true })
 Groupboxes.Utility_Path:AddSlider("NextDoorPathThickness", { Text = "线条粗细", Min = 0.05, Max = 1, Default = 0.2, Rounding = 2, Compact = true })
 Groupboxes.Utility_Path:AddSlider("NextDoorPathTransparency", { Text = "路径透明度", Min = 0, Max = 1, Default = 0.25, Rounding = 2, Compact = true })
 
@@ -4736,19 +4795,122 @@ Globals.NextDoorPathFolder.Name = Abysall.ESPLibrary:GenerateRandomString()
 Globals.NextDoorPathFolder.Parent = Services.Workspace
 
 local NextDoorPathToken = 0
+local NextDoorPathNodes = {}        -- 节点池: { { Node = Part, Attachment = Attachment, Beam = Beam }, ... }
+local NextDoorPathMarker = nil      -- 终点标记
+local NextDoorPathWaypoints = nil   -- 缓存的寻路点(不含玩家位置)
+local NextDoorPathTargetPos = nil   -- 目标门位置
 
 local function ClearNextDoorPath()
-	if Globals.NextDoorPathFolder then
-		Globals.NextDoorPathFolder:ClearAllChildren()
+	for _, Entry in ipairs(NextDoorPathNodes) do
+		if Entry.Node and Entry.Node.Parent then
+			Entry.Node:Destroy()
+		end
+	end
+	table.clear(NextDoorPathNodes)
+	if NextDoorPathMarker and NextDoorPathMarker.Parent then
+		NextDoorPathMarker:Destroy()
+		NextDoorPathMarker = nil
+	end
+	NextDoorPathWaypoints = nil
+	NextDoorPathTargetPos = nil
+end
+
+local function DrawNextDoorPath(HeadPos)
+	if not NextDoorPathWaypoints or #NextDoorPathWaypoints == 0 then return end
+
+	local ColorValue = Options.NextDoorPathESPColor.Value
+	local TransparencyValue = Options.NextDoorPathTransparency.Value
+	local ThicknessValue = Options.NextDoorPathThickness.Value
+
+	-- 绘制点序列: 第1个 = 角色当前位置(线头实时跟随), 其余 = 缓存路径点
+	local Positions = { HeadPos + Vector3.new(0, 1, 0) }
+	for _, P in ipairs(NextDoorPathWaypoints) do
+		table.insert(Positions, P + Vector3.new(0, 1, 0))
+		if #Positions >= 301 then break end
+	end
+	local Count = #Positions
+
+	-- 节点池扩容: 只在数量变多时创建新实例
+	while #NextDoorPathNodes < Count do
+		local Index = #NextDoorPathNodes + 1
+		local Node = Instance.new("Part")
+		Node.Anchored = true
+		Node.CanCollide = false
+		Node.CanQuery = false
+		Node.CanTouch = false
+		Node.CastShadow = false
+		Node.Size = Vector3.new(0.3, 0.3, 0.3)
+		Node.Material = Enum.Material.Neon
+		Node.Name = Abysall.ESPLibrary:GenerateRandomString()
+		Node.Parent = Globals.NextDoorPathFolder
+
+		local Attachment = Instance.new("Attachment")
+		Attachment.Name = "PathAttachment"
+		Attachment.Parent = Node
+
+		local Beam = nil
+		if Index > 1 then
+			Beam = Instance.new("Beam")
+			Beam.FaceCamera = true
+			Beam.LightEmission = 1
+			Beam.LightInfluence = 0
+			Beam.Attachment0 = Attachment
+			Beam.Attachment1 = NextDoorPathNodes[Index - 1].Attachment
+			Beam.Parent = Node
+		end
+
+		table.insert(NextDoorPathNodes, { Node = Node, Attachment = Attachment, Beam = Beam })
+	end
+
+	-- 节点池收缩: 只在数量变少时销毁尾部实例
+	while #NextDoorPathNodes > Count do
+		local Entry = table.remove(NextDoorPathNodes)
+		if Entry.Node and Entry.Node.Parent then
+			Entry.Node:Destroy()
+		end
+	end
+
+	-- 每帧仅做赋值(不新建实例): 位置跟随 + 样式同步
+	for Index, Entry in ipairs(NextDoorPathNodes) do
+		Entry.Node.Position = Positions[Index]
+		Entry.Node.Color = ColorValue
+		Entry.Node.Transparency = TransparencyValue
+		if Entry.Beam then
+			Entry.Beam.Width0 = ThicknessValue
+			Entry.Beam.Width1 = ThicknessValue
+			Entry.Beam.Color = ColorSequence.new(ColorValue)
+			Entry.Beam.Transparency = NumberSequence.new(TransparencyValue)
+		end
+	end
+
+	-- 终点标记
+	if NextDoorPathTargetPos then
+		if not NextDoorPathMarker or not NextDoorPathMarker.Parent then
+			NextDoorPathMarker = Instance.new("Part")
+			NextDoorPathMarker.Anchored = true
+			NextDoorPathMarker.CanCollide = false
+			NextDoorPathMarker.CanQuery = false
+			NextDoorPathMarker.CanTouch = false
+			NextDoorPathMarker.CastShadow = false
+			NextDoorPathMarker.Shape = Enum.PartType.Ball
+			NextDoorPathMarker.Size = Vector3.new(2, 2, 2)
+			NextDoorPathMarker.Material = Enum.Material.Neon
+			NextDoorPathMarker.Name = Abysall.ESPLibrary:GenerateRandomString()
+			NextDoorPathMarker.Parent = Globals.NextDoorPathFolder
+		end
+		NextDoorPathMarker.Position = NextDoorPathTargetPos + Vector3.new(0, 4, 0)
+		NextDoorPathMarker.Color = ColorValue
+		NextDoorPathMarker.Transparency = math.clamp(TransparencyValue + 0.2, 0, 1)
 	end
 end
 
 Toggles.NextDoorPathESP:OnChanged(function(Value)
 	NextDoorPathToken += 1
+	local Token = NextDoorPathToken
 	ClearNextDoorPath()
 	if not Value then return end
-	local Token = NextDoorPathToken
 
+	-- 后台协程1: 按间隔重算寻路(ComputeAsync 只在这里跑, 与渲染解耦)
 	task.spawn(function()
 		while Toggles.NextDoorPathESP.Value and Token == NextDoorPathToken do
 			local Character = LocalPlayer.Character
@@ -4775,75 +4937,40 @@ Toggles.NextDoorPathESP:OnChanged(function(Value)
 					if Success and Path and Path.Status == Enum.PathStatus.Success
 						and Token == NextDoorPathToken and Toggles.NextDoorPathESP.Value then
 
-						ClearNextDoorPath()
-
-						local ColorValue = Options.NextDoorPathESPColor.Value
-						local TransparencyValue = Options.NextDoorPathTransparency.Value
-						local ThicknessValue = Options.NextDoorPathThickness.Value
-						local PreviousAttachment = nil
-						local NodeCount = 0
-
+						local Waypoints = {}
 						for _, Waypoint in ipairs(Path:GetWaypoints()) do
-							NodeCount += 1
-							if NodeCount > 300 then break end
-
-							local Node = Instance.new("Part")
-							Node.Anchored = true
-							Node.CanCollide = false
-							Node.CanQuery = false
-							Node.CanTouch = false
-							Node.CastShadow = false
-							Node.Size = Vector3.new(0.3, 0.3, 0.3)
-							Node.Position = Waypoint.Position + Vector3.new(0, 1, 0)
-							Node.Color = ColorValue
-							Node.Material = Enum.Material.Neon
-							Node.Transparency = TransparencyValue
-							Node.Parent = Globals.NextDoorPathFolder
-
-							local Attachment = Instance.new("Attachment")
-							Attachment.Name = "PathAttachment"
-							Attachment.Parent = Node
-
-							if PreviousAttachment then
-								local Beam = Instance.new("Beam")
-								Beam.FaceCamera = true
-								Beam.Width0 = ThicknessValue
-								Beam.Width1 = ThicknessValue
-								Beam.LightEmission = 1
-								Beam.LightInfluence = 0
-								Beam.Color = ColorSequence.new(ColorValue)
-								Beam.Transparency = NumberSequence.new(TransparencyValue)
-								Beam.Attachment0 = Attachment
-								Beam.Attachment1 = PreviousAttachment
-								Beam.Parent = Node
-							end
-
-							PreviousAttachment = Attachment
+							table.insert(Waypoints, Waypoint.Position)
+							if #Waypoints >= 300 then break end
 						end
-
-						local Marker = Instance.new("Part")
-						Marker.Anchored = true
-						Marker.CanCollide = false
-						Marker.CanQuery = false
-						Marker.CanTouch = false
-						Marker.CastShadow = false
-						Marker.Shape = Enum.PartType.Ball
-						Marker.Size = Vector3.new(2, 2, 2)
-						Marker.Position = TargetPos + Vector3.new(0, 4, 0)
-						Marker.Color = ColorValue
-						Marker.Material = Enum.Material.Neon
-						Marker.Transparency = math.clamp(TransparencyValue + 0.2, 0, 1)
-						Marker.Parent = Globals.NextDoorPathFolder
+						NextDoorPathWaypoints = Waypoints
+						NextDoorPathTargetPos = TargetPos
 					end
 				end
 			end
 
-			task.wait(Options.NextDoorPathScanRate.Value or 1)
+			task.wait(math.clamp(Options.NextDoorPathScanRate.Value or 0.5, 0.05, 5))
 		end
 		ClearNextDoorPath()
 	end)
-end)
 
+	-- 后台协程2: 高频渲染(0.01秒/帧)。只更新已有实例的位置:
+	-- 线头永远贴在角色身上; 走过/贴近的路径点自动移除, 线条缩短跟手
+	task.spawn(function()
+		while Toggles.NextDoorPathESP.Value and Token == NextDoorPathToken do
+			if NextDoorPathWaypoints and #NextDoorPathWaypoints > 0 then
+				local Character = LocalPlayer.Character
+				local Root = Character and Character:FindFirstChild("HumanoidRootPart")
+				if Root then
+					while #NextDoorPathWaypoints > 1 and (Root.Position - NextDoorPathWaypoints[1]).Magnitude <= 6 do
+						table.remove(NextDoorPathWaypoints, 1)
+					end
+					DrawNextDoorPath(Root.Position)
+				end
+			end
+			task.wait(0.01)
+		end
+	end)
+end)
 
 
 -- Halloween
@@ -5106,6 +5233,31 @@ Toggles.CrouchSpoof:OnChanged(function(Value)
 	end
 end)
 
+-- GodCam 相机补偿：位置伪装把人物沉入地下 2.346，这里逐帧把相机抬回正常高度
+do
+	local Offset = Vector3.new(0, 2.346, 0)
+	local Applied = nil
+	Services.RunService:BindToRenderStep("AbysallGodCamRevert", 1, function()
+		local Cam = Services.Workspace.CurrentCamera
+		if Applied and Cam and Cam.CFrame == Applied then
+			Cam.CFrame = Applied - Offset
+		end
+		Applied = nil
+	end)
+	Services.RunService:BindToRenderStep("AbysallGodCam", 2001, function()
+		local Cam = Services.Workspace.CurrentCamera
+		if not Cam or not Toggles.PositionSpoof.Value then return end
+		if Floor == "Fools" or Floor == "OldHotel" or not Character or not Humanoid then return end
+		if Humanoid.HipHeight > 1 or Character:GetAttribute("Hiding") == true then return end
+		Applied = Cam.CFrame + Offset
+		Cam.CFrame = Applied
+	end)
+	Library:OnUnload(function()
+		pcall(function() Services.RunService:UnbindFromRenderStep("AbysallGodCamRevert") end)
+		pcall(function() Services.RunService:UnbindFromRenderStep("AbysallGodCam") end)
+	end)
+end
+
 Groupboxes.Exploits_Remove = Tabs.Exploits:AddRightGroupbox("移除")
 Groupboxes.Exploits_Remove:AddToggle("RemoveScreech", { Text = "移除 Screech",  Default = false, Tooltip = "阻止 Screech 刷新。" })
 Groupboxes.Exploits_Remove:AddToggle("RemoveHalt",    { Text = "移除 Halt",     Default = false, Tooltip = "阻止 Halt 刷新。" })
@@ -5199,6 +5351,32 @@ Toggles.RemoveSurge:OnChanged(function(Value)
 	end
 end)
 
+Groupboxes.Exploits_Delete = Tabs.Exploits:AddRightGroupbox("删除")
+Groupboxes.Exploits_Delete:AddButton({
+	Text = "扫描并删除行李推车",
+	DoubleClick = false,
+	Tooltip = "扫描整个地图，找到名为 Luggage_Cart_Crouch 的物件后直接移除。",
+	Func = function()
+		local Count = 0
+		local Target = "Luggage_Cart_Crouch"
+		local function Sweep(Root)
+			if Root.Name == Target then
+				Root:Destroy()
+				Count += 1
+			end
+			for _, Child in ipairs(Root:GetChildren()) do
+				Sweep(Child)
+			end
+		end
+		task.spawn(function()
+			Sweep(Services.Workspace)
+			local CurrentRooms = Services.Workspace:FindFirstChild("CurrentRooms")
+			if CurrentRooms then Sweep(CurrentRooms) end
+			Functions.Notify({ Title = "行李推车删除完成，共移除 " .. tostring(Count) .. " 个。" })
+		end)
+	end,
+})
+
 Groupboxes.Exploits_Audio = Tabs.Exploits:AddLeftGroupbox("音频")
 Globals.JamMuffle = Services.SoundService:WaitForChild("Main"):FindFirstChild("Jamming") or Instance.new("EqualizerSoundEffect")
 
@@ -5224,7 +5402,7 @@ end)
 Groupboxes.Visuals_LeftTab = Tabs.Visuals:AddLeftTabbox("镜头 / 效果")
 Groupboxes.Visuals_Camera = Groupboxes.Visuals_LeftTab:AddTab("镜头")
 Groupboxes.Visuals_Camera:AddToggle("AmbientToggle", { Text = "环境光", Default = false, Tooltip = "将环境光颜色改为指定值。" })
-Groupboxes.Visuals_Camera:AddSlider("FieldOfView", { Text = "视野（FOV）", Min = 1, Max = 120, Default = 70, Rounding = 0 })
+Groupboxes.Visuals_Camera:AddSlider("FieldOfView", { Text = "视野", Min = 1, Max = 120, Default = 70, Rounding = 0 })
 Groupboxes.Visuals_Camera:AddToggle("FOVToggle", {    Text = "自定义 FOV",    Default = false,    Tooltip = "仅在此开关启用时应用 FOV 滑块。" })
 Toggles.FOVToggle:AddKeyPicker("FovToggle", {Text = "自定义 Fov", Default = "O", Mode = "Toggle", SyncToggleState = true})
 Groupboxes.Visuals_Camera:AddDivider()
@@ -5630,6 +5808,12 @@ end})
 
 Groupboxes.Visuals_ESP          = Tabs.Visuals:AddRightTabbox("透视 / 设置")
 Groupboxes.Visuals_ESP_Toggles  = Groupboxes.Visuals_ESP:AddTab("透视")
+
+-- 透视风格：Abysall = 原版配色字体；MSP = 换色配色 + RobotoCondensed 字体
+Groupboxes.Visuals_ESP_Toggles:AddDropdown("ESPStylePreset", {
+	Text = "透视风格", Values = { "Abysall", "MSP" }, Default = "Abysall",
+	Tooltip = "只换各类透视的颜色与文字字体，不影响开关与勾选项。"
+})
 
 -- 每一类透视 = 独立开关 + 独立调色；有多个名称的分类另有独立勾选列表。
 -- 只有一个名称的分类（门/玩家/梯子/月光之门）不设勾选列表。
@@ -6118,6 +6302,80 @@ Options.EntityESPColor:OnChanged(function(Value)
 	for _, Object in Objects.Entities do Abysall.ESPLibrary:UpdateObjectColor(Object, Value) end
 end)
 
+local ESPStyleSchemes = {
+	Abysall = {
+		Objective = Color3.fromRGB(0, 255, 0), Door = Color3.fromRGB(0, 200, 255),
+		HidingSpot = Color3.fromRGB(255, 170, 0), Player = Color3.fromRGB(255, 255, 255),
+		Chest = Color3.fromRGB(255, 255, 0), Item = Color3.fromRGB(170, 0, 255),
+		Currency = Color3.fromRGB(255, 255, 0), Ladder = Color3.fromRGB(3, 67, 71),
+		Misc = Color3.fromRGB(255, 255, 255), RiftDoor = Color3.fromRGB(170, 0, 255),
+		Entity = Color3.fromRGB(255, 0, 0), Font = "GothamBold",
+	},
+	MSP = {
+		Objective = Color3.fromRGB(0, 255, 0), Door = Color3.fromRGB(0, 244, 255),
+		HidingSpot = Color3.fromRGB(0, 100, 0), Player = Color3.fromRGB(255, 255, 255),
+		Chest = Color3.fromRGB(150, 75, 0), Item = Color3.fromRGB(255, 0, 240),
+		Currency = Color3.fromRGB(255, 255, 0), Ladder = Color3.fromRGB(255, 255, 255),
+		Misc = Color3.fromRGB(255, 255, 255), RiftDoor = Color3.fromRGB(0, 244, 255),
+		Entity = Color3.fromRGB(255, 0, 0), Font = "RobotoCondensed",
+	},
+}
+
+local function SetESPStyleElement(El, V)
+	if El and type(El.SetValue) == "function" then
+		El:SetValue(V)
+	elseif El then
+		El.Value = V
+	end
+end
+
+Options.ESPStylePreset:OnChanged(function(Value)
+	local Style
+	if type(Value) == "string" and ESPStyleSchemes[Value] then
+		Style = Value
+	elseif Value == 2 then
+		Style = "MSP"
+	else
+		Style = "Abysall"
+	end
+	local Scheme = ESPStyleSchemes[Style]
+
+	-- 每一项单独保护：任何一个控件赋值失败都不会中断其余配色
+	local function ApplyStyleColor(OptKey, ListGetter, Col)
+		pcall(function() SetESPStyleElement(Options[OptKey], Col) end)
+		pcall(function()
+			for _, Object in ListGetter() do
+				Abysall.ESPLibrary:UpdateObjectColor(Object, Col)
+			end
+		end)
+	end
+
+	ApplyStyleColor("ObjectiveESPColor",  function() return Objects.Objectives end,  Scheme.Objective)
+	ApplyStyleColor("DoorESPColor",       function() return Objects.Doors end,       Scheme.Door)
+	ApplyStyleColor("HidingSpotESPColor", function() return Objects.HidingSpots end, Scheme.HidingSpot)
+	ApplyStyleColor("PlayerESPColor",     function() return {} end,                  Scheme.Player)
+	ApplyStyleColor("ChestESPColor",      function() return Objects.Chests end,      Scheme.Chest)
+	ApplyStyleColor("ItemESPColor",       function() return Objects.Items end,       Scheme.Item)
+	ApplyStyleColor("CurrencyESPColor",   function() return Objects.Currency end,    Scheme.Currency)
+	ApplyStyleColor("LadderESPColor",     function() return Objects.Ladders end,     Scheme.Ladder)
+	ApplyStyleColor("MiscESPColor",       function() return Objects.Misc end,        Scheme.Misc)
+	ApplyStyleColor("RiftDoorESPColor",   function() return Objects.RiftDoors end,   Scheme.RiftDoor)
+	ApplyStyleColor("EntityESPColor",     function() return Objects.Entities end,    Scheme.Entity)
+
+	pcall(function() Abysall.ESPLibrary:SetFont(Enum.Font[Scheme.Font]) end)
+	pcall(function() SetESPStyleElement(Options.ESPTextFont, Scheme.Font) end)
+	-- 按当前开关/勾选状态整体重刷，新色值同时作用于已存在物件
+	local Appliers = {
+		ApplyVisualESP_Objective, ApplyVisualESP_Door, ApplyVisualESP_HidingSpot,
+		ApplyVisualESP_Player, ApplyVisualESP_Chest, ApplyVisualESP_Item,
+		ApplyVisualESP_Currency, ApplyVisualESP_Ladder, ApplyVisualESP_Misc,
+		ApplyVisualESP_RiftDoor, ApplyVisualESP_Entity,
+	}
+	for _, Fn in ipairs(Appliers) do
+		pcall(Fn)
+	end
+end)
+
 Groupboxes.Visuals_ESP_Settings:AddToggle("ESPRainbow",     { Text = "彩虹效果", Default = false, Tooltip = "让透视目标呈现彩虹变色。" })
 Groupboxes.Visuals_ESP_Settings:AddToggle("ESPShowDistance",{ Text = "显示距离",  Default = true,  Tooltip = "显示你与目标之间的距离。" })
 Groupboxes.Visuals_ESP_Settings:AddDivider()
@@ -6328,71 +6586,6 @@ Toggles.SkipSeekMines:OnChanged(function(Value)
 			end
 		end)
 	end
-end)
-
-local SkipMinecartToken = 0
-
-Groupboxes.Floors_Automation:AddToggle("SkipMinecartSeek", {
-	Text = "跳过矿车追逐 (146 门连锁传送)",
-	Default = false,
-	Tooltip = "打开 146 号门后，自动连续传送到下一扇门并将其打开，每扇门开启后才传送下一扇，直到矿车追逐结束。",
-	Risky = Floor ~= "Mines"
-})
-
-Toggles.SkipMinecartSeek:OnChanged(function(Value)
-	SkipMinecartToken += 1
-
-	if not Value then
-		return
-	end
-
-	local Token = SkipMinecartToken
-
-	task.spawn(function()
-		while Toggles.SkipMinecartSeek.Value and Token == SkipMinecartToken do
-			if (tonumber(LatestRoom.Value) or 0) >= 146 then
-				break
-			end
-			task.wait(0.25)
-		end
-
-		if not Toggles.SkipMinecartSeek.Value or Token ~= SkipMinecartToken then
-			return
-		end
-
-		local LastDoorSeenTime = tick()
-
-		while Toggles.SkipMinecartSeek.Value and Token == SkipMinecartToken do
-			if GameData:FindFirstChild("Floor") and GameData.Floor.Value ~= "Mines" then
-				break
-			end
-
-			if Character and Character:GetAttribute("Minecarting") == true then
-				Character:SetAttribute("Minecarting", false)
-			end
-
-			local Door, DoorNum = Functions.FindNextClosedDoor(tonumber(LatestRoom.Value) or 146)
-
-			if not Door then
-				if tick() - LastDoorSeenTime > 20 then
-					break
-				end
-
-				task.wait(0.5)
-				continue
-			end
-
-			LastDoorSeenTime = tick()
-
-			local Opened = Functions.OpenDoorAndWait(Door, 15)
-
-			if not Opened then
-				task.wait(0.3)
-			end
-
-			task.wait(0.15)
-		end
-	end)
 end)
 
 Groupboxes.Floors_Automation:AddToggle("AutoSteerMinecart", {
@@ -6781,72 +6974,6 @@ Groupboxes.Floors_Bypass:AddToggle("FigureGodmode", {
 	Risky = not (Floor == "Fools" or Floor == "OldHotel")
 })
 Groupboxes.Floors_Bypass:AddDivider()
-local MinecartsCollisionConnection = nil
-
-Groupboxes.Floors_Bypass:AddToggle("MinecartsCollision", {
-	Text = "矿车防碰撞 (Minecarts)",
-	Default = false,
-	Tooltip = "关闭矿车（Minecarts）的碰撞体积，避免被矿车推挤、卡住。"
-})
-
-local function DisableMinecartCollision(Cart)
-	if not Cart or not Cart.Parent then
-		return
-	end
-
-	for _, Part in ipairs(Cart:GetDescendants()) do
-		if Part:IsA("BasePart") then
-			Part.CanCollide = false
-			Part.CanQuery = false
-		end
-	end
-end
-
-Toggles.MinecartsCollision:OnChanged(function(Value)
-	if MinecartsCollisionConnection then
-		MinecartsCollisionConnection:Disconnect()
-		MinecartsCollisionConnection = nil
-	end
-
-	if not Value then
-		return
-	end
-
-	MinecartsCollisionConnection = workspace.DescendantAdded:Connect(function(Added)
-		if not Toggles.MinecartsCollision.Value then
-			return
-		end
-
-		if Added.Name == "MinecartRig" or Added.Name == "Minecart" then
-			task.defer(function()
-				task.wait(0.1)
-				DisableMinecartCollision(Added)
-			end)
-		end
-	end)
-
-	task.spawn(function()
-		while Toggles.MinecartsCollision.Value do
-			for _, Object in ipairs(workspace:GetChildren()) do
-				if Object.Name == "MinecartRig" or Object.Name == "Minecart" then
-					DisableMinecartCollision(Object)
-				end
-			end
-
-			local LiveCamera = workspace.CurrentCamera
-			if LiveCamera then
-				for _, Object in ipairs(LiveCamera:GetChildren()) do
-					if Object.Name == "MinecartRig" then
-						DisableMinecartCollision(Object)
-					end
-				end
-			end
-
-			task.wait(0.5)
-		end
-	end)
-end)
-
 Groupboxes.Floors_Bypass:AddToggle("RemoveBasementGate",  { Text = "移除地下室闸门",   Default = false, Tooltip = "移除地下室房间的闸门。",            Risky = not (Floor == "Fools" or Floor == "OldHotel") })
 Groupboxes.Floors_Bypass:AddToggle("RemovePaintingsDoor", { Text = "移除油画房石门",  Default = false, Tooltip = "移除油画房的壁炉门。", Risky = not (Floor == "Fools" or Floor == "OldHotel") })
 Groupboxes.Floors_Bypass:AddToggle("RemoveSkeletonDoor",  { Text = "移除骷髅门",   Default = false, Tooltip = "移除医务室的骷髅门。",    Risky = Floor ~= "Fools" })
@@ -7840,22 +7967,22 @@ Functions.HandleObject = function(Object)
 		if VisualESPEnabled("Rift Door") then Functions.AddESP({ Object = Object, Text = "Moonlight Door", Color = Options.RiftDoorESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil) end
 		table.insert(Objects.RiftDoors, Object)
 	elseif typeof(Name) == "string" and (Name:find("VendingMachine") ~= nil or Name == "Vendor_ShakelightVendingMachine") then
-		if ArchivesESPEnabledFor("Vending Machine") then Functions.AddESP({ Object = Object, Text = "Vending Machine", Color = Options.ArchivesESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil) end
+		if Toggles.VendingMachineESPToggle.Value then Functions.AddESP({ Object = Object, Text = "Vending Machine", Color = Options.VendingMachineESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil) end
 		table.insert(Objects.VendingMachines, Object)
 	elseif Name == "ArchivesWaterCooler" or Name == "WaterCooler" then
-		if ArchivesESPEnabledFor("Water Cooler") then Functions.AddESP({ Object = Object, Text = "Water Cooler", Color = Options.ArchivesESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil) end
+		if Toggles.WaterCoolerESPToggle.Value then Functions.AddESP({ Object = Object, Text = "Water Cooler", Color = Options.WaterCoolerESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil) end
 		table.insert(Objects.WaterCoolers, Object)
 	elseif Name == "ArchivesLargePrinter" then
-		if ArchivesESPEnabledFor("Large Printer") then Functions.AddESP({ Object = Object, Text = "Large Printer", Color = Options.ArchivesESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil) end
+		if Toggles.LargePrinterESPToggle.Value then Functions.AddESP({ Object = Object, Text = "Large Printer", Color = Options.LargePrinterESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil) end
 		table.insert(Objects.LargePrinters, Object)
 	elseif Name == "ArchivesTrashcan" or Name == "Trashcan" then
-		if ArchivesESPEnabledFor("Trashcan") then Functions.AddESP({ Object = Object, Text = "Trashcan", Color = Options.ArchivesESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil) end
+		if Toggles.TrashcanESPToggle.Value and game.PlaceId == ArchivesESP_PlaceGate then Functions.AddESP({ Object = Object, Text = "Trashcan", Color = Options.TrashcanESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil) end
 		table.insert(Objects.Trashcans, Object)
 	elseif Name == "CoinRoll" then
-		if ArchivesESPEnabledFor("Coin Roll") then Functions.AddESP({ Object = Object, Text = "Coin Roll", Color = Options.ArchivesESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil) end
+		if Toggles.CoinRollESPToggle.Value then Functions.AddESP({ Object = Object, Text = "Coin Roll", Color = Options.CoinRollESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil) end
 		table.insert(Objects.CoinRolls, Object)
 	elseif Name == "ArchivesTerminal" then
-		if ArchivesESPEnabledFor("Terminal") then Functions.AddESP({ Object = Object, Text = "Terminal", Color = Options.ArchivesESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil) end
+		if Toggles.TerminalESPToggle.Value then Functions.AddESP({ Object = Object, Text = "Terminal", Color = Options.TerminalESPColor.Value }, Object:GetAttribute("ParentRoom") ~= nil) end
 		table.insert(Objects.Terminals, Object)
 	elseif Name == "Ladder" then
 		if VisualESPEnabled("Ladders") then Functions.AddESP({ Object = Object, Text = "Ladder", Color = Options.LadderESPColor.Value }, true) end
@@ -9273,4 +9400,3 @@ end)
 while not Globals.MainUI do task.wait() end
 Abysall.Interface.ApplySettingsTab(Window)
 Functions.Notify({ Title = "加载成功，用时 " .. math.floor((tick() - LoadStart) * 1000) / 1000 .. " 秒。" , Body = "按 " .. tostring(Options.MenuKeybind.Value) .. " 键开关 UI。"})
--- ，我吃滚木，你吃滚木78

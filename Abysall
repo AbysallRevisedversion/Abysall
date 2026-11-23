@@ -1,3 +1,4 @@
+
 --	Functions.Notify({Title = "Used For Notifications."})
 -- 	Disabled = not Functions.CheckCompatability({"require"}), DisabledTooltip = Globals.IncompatibleMessage
 -- 	Risky = Floor ~= "Mines" (Means it only works on mines)
@@ -9565,4 +9566,4 @@ end)
 
 Abysall.Interface.ApplySettingsTab(Window)
 Functions.Notify({ Title = "加载成功，用时 " .. math.floor((tick() - LoadStart) * 1000) / 1000 .. " 秒。" , Body = "按 " .. tostring(Options.MenuKeybind.Value) .. " 键开关 UI。"})
--- 也是修复了脚本透视问题
+-- 脚本修复了上帝视角与透视问题

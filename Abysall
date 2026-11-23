@@ -3653,7 +3653,7 @@ Toggles.ForgetMeNotSolver:OnChanged(function(Value)
 end)
 
 Toggles.BypassWater:OnChanged(function(Value)
-	Functions.Notify({ Title = "注意：无敌模式会使此功能失效！" })
+	Functions.Notify({ Title = "注意：位置伪装会使此功能失效！" })
 
 	if WaterBypassConnection then
 		WaterBypassConnection:Disconnect()
@@ -5228,40 +5228,26 @@ end)
 
 Groupboxes.Exploits_BypassRight:AddDivider()
 Groupboxes.Exploits_BypassRight:AddToggle("PositionSpoof", {
-	Text = "无敌模式", Default = false,
-	Tooltip = "Supreme Hub 式无敌：按服务器版本把碰撞判定沉入地下，实体碰不到你。"
+	Text = "位置伪装", Default = false,
+	Tooltip = "让服务器认为你在地下，免疫 Rush 类实体。"
 })
 Groupboxes.Exploits_BypassRight:AddToggle("CrouchSpoof", {
 	Text = "下蹲伪装", Default = false, Tooltip = "让游戏认为你一直蹲着。"
 })
 Toggles.PositionSpoof:OnChanged(function(Value)
-	if Floor ~= "Fools" and Floor ~= "OldHotel" and Character then
-		if Value and RemotesFolder.Name ~= "RemotesFolder" then
-			-- Supreme Hub 无敌(旧服务器版)：把碰撞判定 Collision 下移 4 格
-			if Character:FindFirstChild("Collision") then
-				Character.Collision.Position -= Vector3.new(0, 4, 0)
-			end
-		end
-		if Value and RemotesFolder.Name == "RemotesFolder" then
-			-- Supreme Hub 无敌(新服务器版)：把角色沉到判定件下方 2 格
-			if Character:FindFirstChild("CollisionPart") then
-				Character:PivotTo(Character.CollisionPart.CFrame * CFrame.new(0, -2, 0))
-			end
-		end
-		if not Value and RemotesFolder.Name == "RemotesFolder" then
-			Character.Humanoid.HipHeight = 2.4
-			Character.Collision.Size = Vector3.new(5.5, 3, 3)
-			Character.LowerTorso.Root.C1 = CFrame.new(Vector3.new(0, 0, 0))
-			Character.Collision.CollisionCrouch.Size = Vector3.new(5.5, 3, 3)
-			Character:PivotTo(Character.CollisionPart.CFrame * CFrame.new(0, 2, 0))
-		end
-		if not Value and RemotesFolder.Name ~= "RemotesFolder" then
-			Character.Collision.Position = RootPart.Position
+	if Floor ~= "Fools" and Floor ~= "OldHotel" then
+		if Value then
+			RootPart.CFrame = RootPart.CFrame * CFrame.new(0, -2.346, 0)
+			Humanoid.HipHeight = 0.05
+			RemotesFolder.Crouch:FireServer(true, true)
+		else
+			RootPart.CFrame = RootPart.CFrame * CFrame.new(0, 2.346, 0)
+			Humanoid.HipHeight = 2.396
 		end
 	end
 end)
 Toggles.PositionSpoof:AddKeyPicker("PositionSpoof", {
-	Text = "无敌模式", Default = "B", Mode = "Toggle", SyncToggleState = true
+	Text = "位置伪装", Default = "B", Mode = "Toggle", SyncToggleState = true
 })
 Toggles.CrouchSpoof:OnChanged(function(Value)
 	if RemotesFolder:FindFirstChild("Crouch") then
@@ -5269,7 +5255,7 @@ Toggles.CrouchSpoof:OnChanged(function(Value)
 	end
 end)
 
--- GodCam 相机补偿：新服务器版无敌把角色沉入地下 2 格，这里逐帧把相机抬回正常高度
+-- GodCam 相机补偿：位置伪装把人物沉入地下 2.346、删除飞哥的 Supreme 无敌在新服下沉 2 格，这里逐帧把相机抬回正常高度（自己看自己永远正常，别人观战仍是遁地）
 do
 	local Offset = Vector3.new(0, 2.346, 0)
 	local Applied = nil
@@ -5282,8 +5268,10 @@ do
 	end)
 	Services.RunService:BindToRenderStep("AbysallGodCam", 2001, function()
 		local Cam = Services.Workspace.CurrentCamera
-		if not Cam or not Toggles.PositionSpoof.Value then return end
-		if RemotesFolder.Name ~= "RemotesFolder" then return end
+		if not Cam then return end
+		local SpoofOn = Toggles.PositionSpoof.Value
+		local GodOn = Toggles.RemoveFigure.Value and RemotesFolder.Name == "RemotesFolder"
+		if not SpoofOn and not GodOn then return end
 		if Floor == "Fools" or Floor == "OldHotel" or not Character or not Humanoid then return end
 		if Humanoid.HipHeight > 1 or Character:GetAttribute("Hiding") == true then return end
 		Applied = Cam.CFrame + Offset
@@ -6662,7 +6650,7 @@ Groupboxes.Floors_Automation:AddSlider("AutoSteerMinecartDuckDistance", {
 Groupboxes.Floors_Automation:AddDivider()
 Groupboxes.Floors_Automation:AddToggle("RoomsAutoWalk",             { Text = "自动通关 Rooms",       Default = false, Tooltip = "在 The Rooms 中自动移动并躲避实体。" })
 Groupboxes.Floors_Automation:AddSlider("RoomsAutoWalkPathfindTimeout", { Text = "寻路超时", Min = 0.5, Max = 3, Default = 1, Rounding = 1 })
-Groupboxes.Floors_Automation:AddToggle("RoomsAutoWalkIgnoreA60",    { Text = "无视 A-60",      Default = false, Tooltip = "存在 A-60 时继续行走，并自动开启无敌模式。" })
+Groupboxes.Floors_Automation:AddToggle("RoomsAutoWalkIgnoreA60",    { Text = "无视 A-60",      Default = false, Tooltip = "存在 A-60 时继续行走，并自动开启位置伪装。" })
 Groupboxes.Floors_Automation:AddToggle("RoomsAutoWalkShowPathToggle", { Text = "显示路径",       Default = false, Tooltip = "显示 Rooms 自动寻路的当前路径。" })
 Groupboxes.Floors_Automation:AddToggle("RoomsAutoWalkSpoofFootsteps", {
     Text = "伪装脚步声", Default = false, Tooltip = "让其他逻辑看起来像在正常行走。",
@@ -7020,10 +7008,44 @@ Groupboxes.Floors_Bypass:AddToggle("RemoveSeekTrigger", {
 	Disabled = not Functions.CheckCompatability({"firetouchinterest"}), DisabledTooltip = Globals.IncompatibleMessage
 })
 Groupboxes.Floors_Bypass:AddToggle("RemoveFigure", {
-	Text = "删除 Figure", Default = false, Tooltip = "彻底移除实体 Figure（不一定生效）。",
+	Text = "删除 Figure", Default = false, Tooltip = "彻底移除实体 Figure（不一定生效）。附带 Supreme 式无敌：开启后角色沉入地下，实体打不到你（观战看到半身遁地，自己的视角正常）。",
 	Risky = not (Floor == "Fools" or Floor == "OldHotel" or Floor == "Mines"),
 	Disabled = not Functions.CheckCompatability({"isnetworkowner"}), DisabledTooltip = Globals.IncompatibleMessage
 })
+Toggles.RemoveFigure:OnChanged(function(Value)
+	if Floor == "Fools" or Floor == "OldHotel" then return end
+	local Char = LocalPlayer.Character
+	if not Char or not Char:FindFirstChild("HumanoidRootPart") then return end
+	pcall(function()
+		if RemotesFolder.Name ~= "RemotesFolder" then
+			-- Supreme Hub 无敌(旧服务器版)：开关时把碰撞判定 Collision 下移/归位 4 格（心跳持续维持）
+			if Char:FindFirstChild("Collision") then
+				if Value then
+					Char.Collision.Position -= Vector3.new(0, 4, 0)
+				else
+					Char.Collision.Position = Char.HumanoidRootPart.Position
+				end
+			end
+		else
+			-- Supreme Hub 无敌(新服务器版)：把角色沉到判定件下方 2 格 / 关闭时全部恢复
+			if Value then
+				if Char:FindFirstChild("CollisionPart") then
+					Char:PivotTo(Char.CollisionPart.CFrame * CFrame.new(0, -2, 0))
+				end
+			elseif Char:FindFirstChild("CollisionPart") and Char:FindFirstChild("Collision") then
+				Char.Humanoid.HipHeight = 2.4
+				Char.Collision.Size = Vector3.new(5.5, 3, 3)
+				if Char:FindFirstChild("LowerTorso") and Char.LowerTorso:FindFirstChild("Root") then
+					Char.LowerTorso.Root.C1 = CFrame.new(Vector3.new(0, 0, 0))
+				end
+				if Char.Collision:FindFirstChild("CollisionCrouch") then
+					Char.Collision.CollisionCrouch.Size = Vector3.new(5.5, 3, 3)
+				end
+				Char:PivotTo(Char.CollisionPart.CFrame * CFrame.new(0, 2, 0))
+			end
+		end
+	end)
+end)
 Groupboxes.Floors_Bypass:AddToggle("AutoRevive", {
 	Text = "无限复活", Default = false, Tooltip = "死亡后自动无限复活。",
 	Risky = not (Floor == "Fools" or Floor == "OldHotel")
@@ -7653,8 +7675,8 @@ Functions.HandleCharacter = function(NewCharacter)
 			RemotesFolder.Crouch:FireServer(true, true)
 		end
 
-		-- 无敌模式(Supreme Hub)：Fools 层或 Bricks 旧服强制开启穿墙
-		if Toggles.PositionSpoof.Value and (Floor == "Fools" or RemotesFolder.Name == "Bricks") and not Toggles.NoclipToggle.Value then
+		-- 删除飞哥(Supreme 无敌)：Fools 层或 Bricks 旧服强制开启穿墙
+		if Toggles.RemoveFigure.Value and (Floor == "Fools" or RemotesFolder.Name == "Bricks") and not Toggles.NoclipToggle.Value then
 			Toggles.NoclipToggle:SetValue(true)
 		end
 
@@ -7692,11 +7714,16 @@ Functions.HandleCharacter = function(NewCharacter)
 				RootPart.CanCollide = not (Toggles.NoclipToggle.Value or Toggles.VelocityManipulationToggle.Value)
 			end
 
-			-- 无敌模式(Supreme Hub)：旧服务器版把判定整体压到角色下方 4 格；新服务器版判定随沉地后的角色正常跟随
-			local SpoofY = (Toggles.PositionSpoof.Value and RemotesFolder.Name ~= "RemotesFolder") and -4 or 0.18
+			-- 位置伪装(原版)：判定抬到角色上方 2.328；删除飞哥(Supreme 无敌·旧服务器版)：判定整体压到角色下方 4 格
+			local SpoofY = 0.18
+			if Toggles.PositionSpoof.Value then
+				SpoofY = 2.328
+			elseif Toggles.RemoveFigure.Value and RemotesFolder.Name ~= "RemotesFolder" then
+				SpoofY = -4
+			end
 			Collision.Position     = RootPart.Position + Vector3.new(0, SpoofY, 0)
 			CollisionPart.Position = RootPart.Position + Vector3.new(0, SpoofY, 0)
-			if Toggles.PositionSpoof.Value and RemotesFolder.Name == "RemotesFolder" then
+			if Toggles.RemoveFigure.Value and RemotesFolder.Name == "RemotesFolder" then
 				-- Supreme Hub 心跳维持：保持 C1/HipHeight/判定尺寸 的下沉状态（pcall 防连带中断心跳）
 				pcall(function()
 					if Character:FindFirstChild("LowerTorso") and Character.LowerTorso:FindFirstChild("Root") then
@@ -7717,18 +7744,34 @@ Functions.HandleCharacter = function(NewCharacter)
 			end
 
 			if Collision:FindFirstChild("CollisionCrouch") and CollisionClone:FindFirstChild("CollisionCrouch") then
-				local CrouchY = (Toggles.PositionSpoof.Value and RemotesFolder.Name ~= "RemotesFolder") and -4 or -0.982
+				local CrouchY = -0.982
+				if Toggles.PositionSpoof.Value then
+					CrouchY = 1.328
+				elseif Toggles.RemoveFigure.Value and RemotesFolder.Name ~= "RemotesFolder" then
+					CrouchY = -4
+				end
 				Collision.CollisionCrouch.Position = RootPart.Position + Vector3.new(0, CrouchY, 0)
 				CollisionClone.CollisionCrouch.CollisionGroup = Collision.CollisionCrouch.CollisionGroup
 			end
 			if CollisionClone:FindFirstChild("CollisionCrouch") then
-				local CloneCrouchY = (Toggles.PositionSpoof.Value and RemotesFolder.Name ~= "RemotesFolder") and -4 or -0.982
+				local CloneCrouchY = -0.982
+				if Toggles.PositionSpoof.Value then
+					CloneCrouchY = 0.75
+				elseif Toggles.RemoveFigure.Value and RemotesFolder.Name ~= "RemotesFolder" then
+					CloneCrouchY = -4
+				end
 				CollisionClone.CollisionCrouch.Position = RootPart.Position + Vector3.new(0, CloneCrouchY, 0)
 			end
 		end
 
 		CollisionClone.CollisionGroup = Collision.CollisionGroup
-		CollisionClone.Position = RootPart.Position + Vector3.new(0, (Toggles.PositionSpoof.Value and RemotesFolder.Name ~= "RemotesFolder") and -4 or 0.18, 0)
+		local CloneY = 0.18
+		if Toggles.PositionSpoof.Value then
+			CloneY = 1.75
+		elseif Toggles.RemoveFigure.Value and RemotesFolder.Name ~= "RemotesFolder" then
+			CloneY = -4
+		end
+		CollisionClone.Position = RootPart.Position + Vector3.new(0, CloneY, 0)
 
 		if Toggles.VelocityManipulationToggle.Value and Options.VelocityManipulationMode.Value == "Velocity" then
 			Globals.ManipulateBody.Parent = RootPart
@@ -7848,18 +7891,24 @@ Functions.HandleCharacter = function(NewCharacter)
 
 	task.wait(1)
 	if Toggles.PositionSpoof.Value and Floor ~= "Fools" and Floor ~= "OldHotel" then
-		-- Supreme Hub 无敌：重生后重新下沉
+		RootPart.CFrame = RootPart.CFrame * CFrame.new(0, -2.346, 0)
+		Humanoid.HipHeight = 0.05
+		RemotesFolder.Crouch:FireServer(true, true)
+	end
+	if Toggles.RemoveFigure.Value and Floor ~= "Fools" and Floor ~= "OldHotel" then
+		-- 删除飞哥(Supreme 无敌)：重生后重新下沉
 		local SpawnChar = LocalPlayer.Character
 		if SpawnChar then
-			if RemotesFolder.Name ~= "RemotesFolder" then
-				if SpawnChar:FindFirstChild("Collision") then
-					SpawnChar.Collision.Position -= Vector3.new(0, 4, 0)
+			pcall(function()
+				if RemotesFolder.Name ~= "RemotesFolder" then
+					if SpawnChar:FindFirstChild("Collision") then
+						SpawnChar.Collision.Position -= Vector3.new(0, 4, 0)
+					end
+				elseif SpawnChar:FindFirstChild("CollisionPart") then
+					SpawnChar:PivotTo(SpawnChar.CollisionPart.CFrame * CFrame.new(0, -2, 0))
 				end
-			elseif SpawnChar:FindFirstChild("CollisionPart") then
-				SpawnChar:PivotTo(SpawnChar.CollisionPart.CFrame * CFrame.new(0, -2, 0))
-			end
+			end)
 		end
-		RemotesFolder.Crouch:FireServer(true, true)
 	end
 
 	local Jam = Globals.MainUI.Initiator.Main_Game.Health:FindFirstChild("Jam")
@@ -9566,4 +9615,4 @@ end)
 
 Abysall.Interface.ApplySettingsTab(Window)
 Functions.Notify({ Title = "加载成功，用时 " .. math.floor((tick() - LoadStart) * 1000) / 1000 .. " 秒。" , Body = "按 " .. tostring(Options.MenuKeybind.Value) .. " 键开关 UI。"})
--- 脚本修复了上帝视角与透视问题
+-- 由于用的无敌模式是Supreme可惜没有用，只能又换回原版的了Abysall

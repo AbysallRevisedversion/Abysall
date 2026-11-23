@@ -14,7 +14,7 @@ getgenv().Abysall = {
 }
 
 
-local BaseUrl = "https://raw.githubusercontent.com/coolcookiebusiness/AbysallHubContinued/main/"
+local BaseUrl = "https://raw.githubusercontent.com/AbysallRevisedversion/Abysall/refs/heads/main/Abysall"
 loadstring(game:HttpGet(BaseUrl .. "Components/Status.luau"))(BaseUrl)
 
 if shared.Runningnofine then
@@ -9565,4 +9565,4 @@ end)
 
 Abysall.Interface.ApplySettingsTab(Window)
 Functions.Notify({ Title = "加载成功，用时 " .. math.floor((tick() - LoadStart) * 1000) / 1000 .. " 秒。" , Body = "按 " .. tostring(Options.MenuKeybind.Value) .. " 键开关 UI。"})
--- 已修复有先。房间不透视问题
+-- 以修复透视问题

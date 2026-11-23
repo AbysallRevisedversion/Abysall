@@ -230,6 +230,14 @@ local Entities = {
 		Alias = "Creak",
 		NotifyMessage = { Title = "'Creak' 已生成。", Body = "不要碰他。" }
 	},
+	["Currents"] = {
+		Alias = "Currents",
+		NotifyMessage = { Title = "'Currents' 已生成。", Body = "注意电流，别贴着走。" }
+	},
+	["Drone"] = {
+		Alias = "Drone",
+		NotifyMessage = { Title = "'Drone' 已生成。", Body = "无人机冲过来了！" }
+	},
 	["DronesStampede"] = {
 		Alias = "DronesStampede",
 		NotifyMessage = { Title = "'Drones Stampede' 已生成。", Body = "找个地方躲起来。" }
@@ -968,6 +976,8 @@ local EntityDistances = {
 	["Scribbles"]	  = 100,
 	["BashMoving"]    = 150,
 	["DronesStampede"] = 100,
+	["Currents"]    = 85,
+	["Drone"]       = 85,
 	["AmbushMoving"]  = 150,
 	["A60"]           = 125,
 	["A120"]          = 85,
@@ -1289,33 +1299,42 @@ Functions.AddESP = function(ESPOptions, RoomBased)
 	end
 
 	if RoomBased then
-		local CurrentRoom = tonumber(LocalPlayer:GetAttribute("CurrentRoom"))
-		local ObjectRoom = tonumber(Object:GetAttribute("ParentRoom"))
+		local ESPAdded = false
+		local function EvaluateRoomESP()
+			local CurrentRoom = tonumber(LocalPlayer:GetAttribute("CurrentRoom"))
+			local ObjectRoom = tonumber(Object:GetAttribute("ParentRoom"))
 
-		if ObjectRoom == CurrentRoom or (table.find(Objects.Doors, Object) and ObjectRoom == CurrentRoom + 1) then
-			Abysall.ESPLibrary:AddESP(ESPOptions)
-		end
-
-		local RoomConnection = LocalPlayer:GetAttributeChangedSignal("CurrentRoom"):Connect(function()
-			if Abysall.ESPLibrary.ColorTable[Object] then
-				ESPOptions.Color = Abysall.ESPLibrary.ColorTable[Object]
-			end
-
-			local NewCurrentRoom = tonumber(LocalPlayer:GetAttribute("CurrentRoom"))
-			local ObjRoom = tonumber(Object:GetAttribute("ParentRoom"))
-
-			if ObjRoom == NewCurrentRoom or (table.find(Objects.Doors, Object) and ObjRoom == NewCurrentRoom + 1) then
+			if ObjectRoom == CurrentRoom or (table.find(Objects.Doors, Object) and ObjectRoom == CurrentRoom + 1) then
+				if Abysall.ESPLibrary.ColorTable[Object] then
+					ESPOptions.Color = Abysall.ESPLibrary.ColorTable[Object]
+				end
 				Abysall.ESPLibrary:AddESP(ESPOptions)
-			else
+				ESPAdded = true
+			elseif ESPAdded then
 				Abysall.ESPLibrary:RemoveESP(Object)
 			end
-		end)
+		end
+
+		EvaluateRoomESP()
+
+		local RoomConnection = LocalPlayer:GetAttributeChangedSignal("CurrentRoom"):Connect(EvaluateRoomESP)
+		-- 修复：ParentRoom 属性晚于对象出现时才赋值时，原逻辑只在换房重算，
+		-- 会永久漏掉该对象的透视（要开关重开才显示）。现在监听属性补判。
+		local ParentRoomConnection = Object:GetAttributeChangedSignal("ParentRoom"):Connect(EvaluateRoomESP)
+
+		local ObjectESPConnections = {
+			Disconnect = function()
+				RoomConnection:Disconnect()
+				ParentRoomConnection:Disconnect()
+			end
+		}
 
 		table.insert(Connections, RoomConnection)
-		ESPConnections[Object] = RoomConnection
+		ESPConnections[Object] = ObjectESPConnections
 
 		Object.Destroying:Once(function()
 			RoomConnection:Disconnect()
+			ParentRoomConnection:Disconnect()
 			if Abysall then
 				Abysall.ESPLibrary:RemoveESP(Object)
 			end
@@ -3633,7 +3652,7 @@ Toggles.ForgetMeNotSolver:OnChanged(function(Value)
 end)
 
 Toggles.BypassWater:OnChanged(function(Value)
-	Functions.Notify({ Title = "注意：位置伪装会使此功能失效！" })
+	Functions.Notify({ Title = "注意：无敌模式会使此功能失效！" })
 
 	if WaterBypassConnection then
 		WaterBypassConnection:Disconnect()
@@ -4780,12 +4799,14 @@ task.spawn(function()
 	end
 end)
 
+-- 下一扇门路径透视 (整块 pcall 保护: 出错只影响本功能)
+pcall(function()
 Groupboxes.Utility_Path:AddToggle("NextDoorPathESP", {
 	Text = "下一扇门路径透视", Default = false,
-	Tooltip = "绘制到下一扇未开门的实时路径。默认每秒重扫（间隔可调），在独立协程运行不卡顿。"
+	Tooltip = "绘制到下一扇未开门的实时路径。寻路结果缓存，渲染每 0.01 秒跟随角色，不卡顿。"
 })
 Toggles.NextDoorPathESP:AddColorPicker("NextDoorPathESPColor", { Text = "路径颜色", Default = Color3.fromRGB(0, 255, 128), Transparency = 0 })
-Groupboxes.Utility_Path:AddSlider("NextDoorPathScanRate", { Text = "扫描间隔（秒）", Min = 0.2, Max = 5, Default = 1, Rounding = 1, Compact = true })
+Groupboxes.Utility_Path:AddSlider("NextDoorPathScanRate", { Text = "重算间隔（秒）", Min = 0.05, Max = 5, Default = 0.5, Rounding = 2, Compact = true })
 Groupboxes.Utility_Path:AddSlider("NextDoorPathThickness", { Text = "线条粗细", Min = 0.05, Max = 1, Default = 0.2, Rounding = 2, Compact = true })
 Groupboxes.Utility_Path:AddSlider("NextDoorPathTransparency", { Text = "路径透明度", Min = 0, Max = 1, Default = 0.25, Rounding = 2, Compact = true })
 
@@ -4794,19 +4815,122 @@ Globals.NextDoorPathFolder.Name = Abysall.ESPLibrary:GenerateRandomString()
 Globals.NextDoorPathFolder.Parent = Services.Workspace
 
 local NextDoorPathToken = 0
+local NextDoorPathNodes = {}        -- 节点池: { { Node = Part, Attachment = Attachment, Beam = Beam }, ... }
+local NextDoorPathMarker = nil      -- 终点标记
+local NextDoorPathWaypoints = nil   -- 缓存的寻路点(不含玩家位置)
+local NextDoorPathTargetPos = nil   -- 目标门位置
 
 local function ClearNextDoorPath()
-	if Globals.NextDoorPathFolder then
-		Globals.NextDoorPathFolder:ClearAllChildren()
+	for _, Entry in ipairs(NextDoorPathNodes) do
+		if Entry.Node and Entry.Node.Parent then
+			Entry.Node:Destroy()
+		end
+	end
+	table.clear(NextDoorPathNodes)
+	if NextDoorPathMarker and NextDoorPathMarker.Parent then
+		NextDoorPathMarker:Destroy()
+		NextDoorPathMarker = nil
+	end
+	NextDoorPathWaypoints = nil
+	NextDoorPathTargetPos = nil
+end
+
+local function DrawNextDoorPath(HeadPos)
+	if not NextDoorPathWaypoints or #NextDoorPathWaypoints == 0 then return end
+
+	local ColorValue = Options.NextDoorPathESPColor.Value
+	local TransparencyValue = Options.NextDoorPathTransparency.Value
+	local ThicknessValue = Options.NextDoorPathThickness.Value
+
+	-- 绘制点序列: 第1个 = 角色当前位置(线头实时跟随), 其余 = 缓存路径点
+	local Positions = { HeadPos + Vector3.new(0, 1, 0) }
+	for _, P in ipairs(NextDoorPathWaypoints) do
+		table.insert(Positions, P + Vector3.new(0, 1, 0))
+		if #Positions >= 301 then break end
+	end
+	local Count = #Positions
+
+	-- 节点池扩容: 只在数量变多时创建新实例
+	while #NextDoorPathNodes < Count do
+		local Index = #NextDoorPathNodes + 1
+		local Node = Instance.new("Part")
+		Node.Anchored = true
+		Node.CanCollide = false
+		Node.CanQuery = false
+		Node.CanTouch = false
+		Node.CastShadow = false
+		Node.Size = Vector3.new(0.3, 0.3, 0.3)
+		Node.Material = Enum.Material.Neon
+		Node.Name = Abysall.ESPLibrary:GenerateRandomString()
+		Node.Parent = Globals.NextDoorPathFolder
+
+		local Attachment = Instance.new("Attachment")
+		Attachment.Name = "PathAttachment"
+		Attachment.Parent = Node
+
+		local Beam = nil
+		if Index > 1 then
+			Beam = Instance.new("Beam")
+			Beam.FaceCamera = true
+			Beam.LightEmission = 1
+			Beam.LightInfluence = 0
+			Beam.Attachment0 = Attachment
+			Beam.Attachment1 = NextDoorPathNodes[Index - 1].Attachment
+			Beam.Parent = Node
+		end
+
+		table.insert(NextDoorPathNodes, { Node = Node, Attachment = Attachment, Beam = Beam })
+	end
+
+	-- 节点池收缩: 只在数量变少时销毁尾部实例
+	while #NextDoorPathNodes > Count do
+		local Entry = table.remove(NextDoorPathNodes)
+		if Entry.Node and Entry.Node.Parent then
+			Entry.Node:Destroy()
+		end
+	end
+
+	-- 每帧仅做赋值(不新建实例): 位置跟随 + 样式同步
+	for Index, Entry in ipairs(NextDoorPathNodes) do
+		Entry.Node.Position = Positions[Index]
+		Entry.Node.Color = ColorValue
+		Entry.Node.Transparency = TransparencyValue
+		if Entry.Beam then
+			Entry.Beam.Width0 = ThicknessValue
+			Entry.Beam.Width1 = ThicknessValue
+			Entry.Beam.Color = ColorSequence.new(ColorValue)
+			Entry.Beam.Transparency = NumberSequence.new(TransparencyValue)
+		end
+	end
+
+	-- 终点标记
+	if NextDoorPathTargetPos then
+		if not NextDoorPathMarker or not NextDoorPathMarker.Parent then
+			NextDoorPathMarker = Instance.new("Part")
+			NextDoorPathMarker.Anchored = true
+			NextDoorPathMarker.CanCollide = false
+			NextDoorPathMarker.CanQuery = false
+			NextDoorPathMarker.CanTouch = false
+			NextDoorPathMarker.CastShadow = false
+			NextDoorPathMarker.Shape = Enum.PartType.Ball
+			NextDoorPathMarker.Size = Vector3.new(2, 2, 2)
+			NextDoorPathMarker.Material = Enum.Material.Neon
+			NextDoorPathMarker.Name = Abysall.ESPLibrary:GenerateRandomString()
+			NextDoorPathMarker.Parent = Globals.NextDoorPathFolder
+		end
+		NextDoorPathMarker.Position = NextDoorPathTargetPos + Vector3.new(0, 4, 0)
+		NextDoorPathMarker.Color = ColorValue
+		NextDoorPathMarker.Transparency = math.clamp(TransparencyValue + 0.2, 0, 1)
 	end
 end
 
 Toggles.NextDoorPathESP:OnChanged(function(Value)
 	NextDoorPathToken += 1
+	local Token = NextDoorPathToken
 	ClearNextDoorPath()
 	if not Value then return end
-	local Token = NextDoorPathToken
 
+	-- 后台协程1: 按间隔重算寻路(ComputeAsync 只在这里跑, 与渲染解耦)
 	task.spawn(function()
 		while Toggles.NextDoorPathESP.Value and Token == NextDoorPathToken do
 			local Character = LocalPlayer.Character
@@ -4833,75 +4957,41 @@ Toggles.NextDoorPathESP:OnChanged(function(Value)
 					if Success and Path and Path.Status == Enum.PathStatus.Success
 						and Token == NextDoorPathToken and Toggles.NextDoorPathESP.Value then
 
-						ClearNextDoorPath()
-
-						local ColorValue = Options.NextDoorPathESPColor.Value
-						local TransparencyValue = Options.NextDoorPathTransparency.Value
-						local ThicknessValue = Options.NextDoorPathThickness.Value
-						local PreviousAttachment = nil
-						local NodeCount = 0
-
+						local Waypoints = {}
 						for _, Waypoint in ipairs(Path:GetWaypoints()) do
-							NodeCount += 1
-							if NodeCount > 300 then break end
-
-							local Node = Instance.new("Part")
-							Node.Anchored = true
-							Node.CanCollide = false
-							Node.CanQuery = false
-							Node.CanTouch = false
-							Node.CastShadow = false
-							Node.Size = Vector3.new(0.3, 0.3, 0.3)
-							Node.Position = Waypoint.Position + Vector3.new(0, 1, 0)
-							Node.Color = ColorValue
-							Node.Material = Enum.Material.Neon
-							Node.Transparency = TransparencyValue
-							Node.Parent = Globals.NextDoorPathFolder
-
-							local Attachment = Instance.new("Attachment")
-							Attachment.Name = "PathAttachment"
-							Attachment.Parent = Node
-
-							if PreviousAttachment then
-								local Beam = Instance.new("Beam")
-								Beam.FaceCamera = true
-								Beam.Width0 = ThicknessValue
-								Beam.Width1 = ThicknessValue
-								Beam.LightEmission = 1
-								Beam.LightInfluence = 0
-								Beam.Color = ColorSequence.new(ColorValue)
-								Beam.Transparency = NumberSequence.new(TransparencyValue)
-								Beam.Attachment0 = Attachment
-								Beam.Attachment1 = PreviousAttachment
-								Beam.Parent = Node
-							end
-
-							PreviousAttachment = Attachment
+							table.insert(Waypoints, Waypoint.Position)
+							if #Waypoints >= 300 then break end
 						end
-
-						local Marker = Instance.new("Part")
-						Marker.Anchored = true
-						Marker.CanCollide = false
-						Marker.CanQuery = false
-						Marker.CanTouch = false
-						Marker.CastShadow = false
-						Marker.Shape = Enum.PartType.Ball
-						Marker.Size = Vector3.new(2, 2, 2)
-						Marker.Position = TargetPos + Vector3.new(0, 4, 0)
-						Marker.Color = ColorValue
-						Marker.Material = Enum.Material.Neon
-						Marker.Transparency = math.clamp(TransparencyValue + 0.2, 0, 1)
-						Marker.Parent = Globals.NextDoorPathFolder
+						NextDoorPathWaypoints = Waypoints
+						NextDoorPathTargetPos = TargetPos
 					end
 				end
 			end
 
-			task.wait(Options.NextDoorPathScanRate.Value or 1)
+			task.wait(math.clamp(Options.NextDoorPathScanRate.Value or 0.5, 0.05, 5))
 		end
 		ClearNextDoorPath()
 	end)
-end)
 
+	-- 后台协程2: 高频渲染(0.01秒/帧)。只更新已有实例的位置:
+	-- 线头永远贴在角色身上; 走过/贴近的路径点自动移除, 线条缩短跟手
+	task.spawn(function()
+		while Toggles.NextDoorPathESP.Value and Token == NextDoorPathToken do
+			if NextDoorPathWaypoints and #NextDoorPathWaypoints > 0 then
+				local Character = LocalPlayer.Character
+				local Root = Character and Character:FindFirstChild("HumanoidRootPart")
+				if Root then
+					while #NextDoorPathWaypoints > 1 and (Root.Position - NextDoorPathWaypoints[1]).Magnitude <= 6 do
+						table.remove(NextDoorPathWaypoints, 1)
+					end
+					DrawNextDoorPath(Root.Position)
+				end
+			end
+			task.wait(0.01)
+		end
+	end)
+end)
+end)
 
 
 -- Halloween
@@ -5137,26 +5227,40 @@ end)
 
 Groupboxes.Exploits_BypassRight:AddDivider()
 Groupboxes.Exploits_BypassRight:AddToggle("PositionSpoof", {
-	Text = "位置伪装", Default = false,
-	Tooltip = "让服务器认为你在地下，免疫 Rush 类实体。"
+	Text = "无敌模式", Default = false,
+	Tooltip = "Supreme Hub 式无敌：按服务器版本把碰撞判定沉入地下，实体碰不到你。"
 })
 Groupboxes.Exploits_BypassRight:AddToggle("CrouchSpoof", {
 	Text = "下蹲伪装", Default = false, Tooltip = "让游戏认为你一直蹲着。"
 })
 Toggles.PositionSpoof:OnChanged(function(Value)
-	if Floor ~= "Fools" and Floor ~= "OldHotel" then
-		if Value then
-			RootPart.CFrame = RootPart.CFrame * CFrame.new(0, -2.346, 0)
-			Humanoid.HipHeight = 0.05
-			RemotesFolder.Crouch:FireServer(true, true)
-		else
-			RootPart.CFrame = RootPart.CFrame * CFrame.new(0, 2.346, 0)
-			Humanoid.HipHeight = 2.396
+	if Floor ~= "Fools" and Floor ~= "OldHotel" and Character then
+		if Value and RemotesFolder.Name ~= "RemotesFolder" then
+			-- Supreme Hub 无敌(旧服务器版)：把碰撞判定 Collision 下移 4 格
+			if Character:FindFirstChild("Collision") then
+				Character.Collision.Position -= Vector3.new(0, 4, 0)
+			end
+		end
+		if Value and RemotesFolder.Name == "RemotesFolder" then
+			-- Supreme Hub 无敌(新服务器版)：把角色沉到判定件下方 2 格
+			if Character:FindFirstChild("CollisionPart") then
+				Character:PivotTo(Character.CollisionPart.CFrame * CFrame.new(0, -2, 0))
+			end
+		end
+		if not Value and RemotesFolder.Name == "RemotesFolder" then
+			Character.Humanoid.HipHeight = 2.4
+			Character.Collision.Size = Vector3.new(5.5, 3, 3)
+			Character.LowerTorso.Root.C1 = CFrame.new(Vector3.new(0, 0, 0))
+			Character.Collision.CollisionCrouch.Size = Vector3.new(5.5, 3, 3)
+			Character:PivotTo(Character.CollisionPart.CFrame * CFrame.new(0, 2, 0))
+		end
+		if not Value and RemotesFolder.Name ~= "RemotesFolder" then
+			Character.Collision.Position = RootPart.Position
 		end
 	end
 end)
 Toggles.PositionSpoof:AddKeyPicker("PositionSpoof", {
-	Text = "位置伪装", Default = "B", Mode = "Toggle", SyncToggleState = true
+	Text = "无敌模式", Default = "B", Mode = "Toggle", SyncToggleState = true
 })
 Toggles.CrouchSpoof:OnChanged(function(Value)
 	if RemotesFolder:FindFirstChild("Crouch") then
@@ -5164,7 +5268,7 @@ Toggles.CrouchSpoof:OnChanged(function(Value)
 	end
 end)
 
--- GodCam 相机补偿：位置伪装把人物沉入地下 2.346，这里逐帧把相机抬回正常高度
+-- GodCam 相机补偿：新服务器版无敌把角色沉入地下 2 格，这里逐帧把相机抬回正常高度
 do
 	local Offset = Vector3.new(0, 2.346, 0)
 	local Applied = nil
@@ -5178,6 +5282,7 @@ do
 	Services.RunService:BindToRenderStep("AbysallGodCam", 2001, function()
 		local Cam = Services.Workspace.CurrentCamera
 		if not Cam or not Toggles.PositionSpoof.Value then return end
+		if RemotesFolder.Name ~= "RemotesFolder" then return end
 		if Floor == "Fools" or Floor == "OldHotel" or not Character or not Humanoid then return end
 		if Humanoid.HipHeight > 1 or Character:GetAttribute("Hiding") == true then return end
 		Applied = Cam.CFrame + Offset
@@ -5373,6 +5478,22 @@ end)
 
 local Main_Game
 local ClientModules
+
+-- FOV 锁定：在渲染队列末端(游戏相机脚本之后)强制应用视野值，
+-- 避免无敌模式/蹲伏状态把 fovtarget 压回 70 导致视野滑块失效
+Services.RunService:BindToRenderStep("AbysallFOVLock", 2002, function()
+	if not Toggles.FOVToggle.Value then return end
+	if Main_Game then
+		Main_Game.fovtarget = Options.FieldOfView.Value
+	end
+	local Cam = Services.Workspace.CurrentCamera
+	if Cam then
+		Cam.FieldOfView = Options.FieldOfView.Value
+	end
+end)
+Library:OnUnload(function()
+	pcall(function() Services.RunService:UnbindFromRenderStep("AbysallFOVLock") end)
+end)
 
 Toggles.RemoveCameraBobbing:OnChanged(function(Value)
 	if Main_Game then Main_Game.spring.Speed = Value and 9e9 or 8 end
@@ -5766,7 +5887,7 @@ end
 local ObjectiveESPChoices = {
 	"Door Key", "Electrical Key", "Generator Fuse", "Generator",
 	"Hint Book", "Hint Paper", "Fuse Breaker", "Time Lever", "Anchor",
-	"Water Pump", "Vine Lever", "Gate Lever", "Gate Button", "Present",
+	"水泵", "Vine Lever", "Gate Lever", "Gate Button", "Present",
 	"Garage Door", "Mirror", "Shopping Cart", "Fire Alarm", "Scrapper",
 	"Candy Magic", "Box Deposit", "Cellar", "Fish Tank",
 }
@@ -5892,8 +6013,8 @@ Groupboxes.Visuals_ESP_Toggles:AddToggle("EntityESPToggle", {
 Groupboxes.Visuals_ESP_Toggles:AddDivider()
 Groupboxes.Visuals_ESP_Toggles:AddDropdown("EntityESPOptions", {
 	Text = "实体列表",
-	Values = { "Rush","Bash","Scribbles","Teller","DronesStampede","Creak","Noise","Noise_TV","Balls","Portrait","CreakHalloween","Weaveling","Ambush","Eyes","Dupe","Figure","Blitz","Lookman","Snare","Giggle","Gloombat Eggs","Grumble","A-60","A-120","Sally","Jeff the Killer","Groundskeeper","Mandrake Hole","Monument","Bramble","AR0xMBUSH","RNIUSHCG==" },
-	Default = { "Rush","Bash","Scribbles","Teller","DronesStampede","Creak","Noise","Noise_TV","Balls","Portrait","CreakHalloween","Weaveling","Ambush","Eyes","Dupe","Figure","Blitz","Lookman","Snare","Giggle","Gloombat Eggs","Grumble","A-60","A-120","Sally","Jeff the Killer","Groundskeeper","Mandrake Hole","Monument","Bramble","AR0xMBUSH","RNIUSHCG==" },
+	Values = { "Rush","Bash","Scribbles","Teller","DronesStampede","Creak","Noise","Noise_TV","Balls","Portrait","CreakHalloween","Weaveling","Ambush","Eyes","Dupe","Figure","Blitz","Lookman","Snare","Giggle","Gloombat Eggs","Grumble","A-60","A-120","Sally","Jeff the Killer","Groundskeeper","Mandrake Hole","Monument","Bramble","AR0xMBUSH","RNIUSHCG==","Drone","Currents" },
+	Default = { "Rush","Bash","Scribbles","Teller","DronesStampede","Creak","Noise","Noise_TV","Balls","Portrait","CreakHalloween","Weaveling","Ambush","Eyes","Dupe","Figure","Blitz","Lookman","Snare","Giggle","Gloombat Eggs","Grumble","A-60","A-120","Sally","Jeff the Killer","Groundskeeper","Mandrake Hole","Monument","Bramble","AR0xMBUSH","RNIUSHCG==","Drone","Currents" },
 	Multi = true,
 	AllowNull = true
 })
@@ -5907,6 +6028,12 @@ local function ESPChoiceSelected(OptionsKey, Label)
 		return false
 	end
 	local V = Opt.Value[Label]
+	if V == nil then
+		local CN = ESPLabelCN[Label]
+		if CN then
+			V = Opt.Value[CN]
+		end
+	end
 	return V ~= nil and V ~= false
 end
 
@@ -6534,7 +6661,7 @@ Groupboxes.Floors_Automation:AddSlider("AutoSteerMinecartDuckDistance", {
 Groupboxes.Floors_Automation:AddDivider()
 Groupboxes.Floors_Automation:AddToggle("RoomsAutoWalk",             { Text = "自动通关 Rooms",       Default = false, Tooltip = "在 The Rooms 中自动移动并躲避实体。" })
 Groupboxes.Floors_Automation:AddSlider("RoomsAutoWalkPathfindTimeout", { Text = "寻路超时", Min = 0.5, Max = 3, Default = 1, Rounding = 1 })
-Groupboxes.Floors_Automation:AddToggle("RoomsAutoWalkIgnoreA60",    { Text = "无视 A-60",      Default = false, Tooltip = "存在 A-60 时继续行走，并自动开启位置伪装。" })
+Groupboxes.Floors_Automation:AddToggle("RoomsAutoWalkIgnoreA60",    { Text = "无视 A-60",      Default = false, Tooltip = "存在 A-60 时继续行走，并自动开启无敌模式。" })
 Groupboxes.Floors_Automation:AddToggle("RoomsAutoWalkShowPathToggle", { Text = "显示路径",       Default = false, Tooltip = "显示 Rooms 自动寻路的当前路径。" })
 Groupboxes.Floors_Automation:AddToggle("RoomsAutoWalkSpoofFootsteps", {
     Text = "伪装脚步声", Default = false, Tooltip = "让其他逻辑看起来像在正常行走。",
@@ -7525,6 +7652,11 @@ Functions.HandleCharacter = function(NewCharacter)
 			RemotesFolder.Crouch:FireServer(true, true)
 		end
 
+		-- 无敌模式(Supreme Hub)：Fools 层或 Bricks 旧服强制开启穿墙
+		if Toggles.PositionSpoof.Value and (Floor == "Fools" or RemotesFolder.Name == "Bricks") and not Toggles.NoclipToggle.Value then
+			Toggles.NoclipToggle:SetValue(true)
+		end
+
 		if Floor ~= "Fools" and Floor ~= "OldHotel" and not Camera:FindFirstChild("MinecartRig") then
 			RootPart.CanCollide = false
 		end
@@ -7559,22 +7691,43 @@ Functions.HandleCharacter = function(NewCharacter)
 				RootPart.CanCollide = not (Toggles.NoclipToggle.Value or Toggles.VelocityManipulationToggle.Value)
 			end
 
-			local SpoofY = Toggles.PositionSpoof.Value and 2.328 or 0.18
+			-- 无敌模式(Supreme Hub)：旧服务器版把判定整体压到角色下方 4 格；新服务器版判定随沉地后的角色正常跟随
+			local SpoofY = (Toggles.PositionSpoof.Value and RemotesFolder.Name ~= "RemotesFolder") and -4 or 0.18
 			Collision.Position     = RootPart.Position + Vector3.new(0, SpoofY, 0)
 			CollisionPart.Position = RootPart.Position + Vector3.new(0, SpoofY, 0)
+			if Toggles.PositionSpoof.Value and RemotesFolder.Name == "RemotesFolder" then
+				-- Supreme Hub 心跳维持：保持 C1/HipHeight/判定尺寸 的下沉状态（pcall 防连带中断心跳）
+				pcall(function()
+					if Character:FindFirstChild("LowerTorso") and Character.LowerTorso:FindFirstChild("Root") then
+						if Character.LowerTorso.Root.C1 ~= CFrame.new(0, -2.3, 0) then
+							Character.LowerTorso.Root.C1 = CFrame.new(0, -2.3, 0)
+						end
+					end
+					if Humanoid.HipHeight ~= 0.22 then
+						Humanoid.HipHeight = 0.22
+					end
+					if Collision.Size ~= Vector3.new(1, 1, 4) then
+						Collision.Size = Vector3.new(1, 1, 4)
+					end
+					if Collision:FindFirstChild("CollisionCrouch") and Collision.CollisionCrouch.Size ~= Vector3.new(1, 1, 4) then
+						Collision.CollisionCrouch.Size = Vector3.new(1, 1, 4)
+					end
+				end)
+			end
 
 			if Collision:FindFirstChild("CollisionCrouch") and CollisionClone:FindFirstChild("CollisionCrouch") then
-				local CrouchY = Toggles.PositionSpoof.Value and 1.328 or -0.982
+				local CrouchY = (Toggles.PositionSpoof.Value and RemotesFolder.Name ~= "RemotesFolder") and -4 or -0.982
 				Collision.CollisionCrouch.Position = RootPart.Position + Vector3.new(0, CrouchY, 0)
 				CollisionClone.CollisionCrouch.CollisionGroup = Collision.CollisionCrouch.CollisionGroup
 			end
 			if CollisionClone:FindFirstChild("CollisionCrouch") then
-				CollisionClone.CollisionCrouch.Position = RootPart.Position + Vector3.new(0, Toggles.PositionSpoof.Value and 0.75 or -0.982, 0)
+				local CloneCrouchY = (Toggles.PositionSpoof.Value and RemotesFolder.Name ~= "RemotesFolder") and -4 or -0.982
+				CollisionClone.CollisionCrouch.Position = RootPart.Position + Vector3.new(0, CloneCrouchY, 0)
 			end
 		end
 
 		CollisionClone.CollisionGroup = Collision.CollisionGroup
-		CollisionClone.Position = RootPart.Position + Vector3.new(0, Toggles.PositionSpoof.Value and 1.75 or 0.18, 0)
+		CollisionClone.Position = RootPart.Position + Vector3.new(0, (Toggles.PositionSpoof.Value and RemotesFolder.Name ~= "RemotesFolder") and -4 or 0.18, 0)
 
 		if Toggles.VelocityManipulationToggle.Value and Options.VelocityManipulationMode.Value == "Velocity" then
 			Globals.ManipulateBody.Parent = RootPart
@@ -7694,8 +7847,17 @@ Functions.HandleCharacter = function(NewCharacter)
 
 	task.wait(1)
 	if Toggles.PositionSpoof.Value and Floor ~= "Fools" and Floor ~= "OldHotel" then
-		RootPart.CFrame = RootPart.CFrame * CFrame.new(0, -2.346, 0)
-		Humanoid.HipHeight = 0.05
+		-- Supreme Hub 无敌：重生后重新下沉
+		local SpawnChar = LocalPlayer.Character
+		if SpawnChar then
+			if RemotesFolder.Name ~= "RemotesFolder" then
+				if SpawnChar:FindFirstChild("Collision") then
+					SpawnChar.Collision.Position -= Vector3.new(0, 4, 0)
+				end
+			elseif SpawnChar:FindFirstChild("CollisionPart") then
+				SpawnChar:PivotTo(SpawnChar.CollisionPart.CFrame * CFrame.new(0, -2, 0))
+			end
+		end
 		RemotesFolder.Crouch:FireServer(true, true)
 	end
 
@@ -9329,6 +9491,78 @@ task.delay(20, function()
 	AbysallScanFPSRoot(GetHiddenContainer())
 end)
 while not Globals.MainUI do task.wait() end
+
+-- 远端组件显示的"最后更新日期"卡死在 2026年9月5日（数据在作者服务器端，改不了源），
+-- 这里在 UI 层把任何含旧日期的文本统一替换为 11月20日。
+task.spawn(function()
+	local DateFixes = {
+		{ "September 5, 2026", "November 20, 2026" },
+		{ "September 5th, 2026", "November 20th, 2026" },
+		{ "September 5 2026", "November 20 2026" },
+		{ "September 5th 2026", "November 20th 2026" },
+		{ "5 September 2026", "20 November 2026" },
+		{ "5th September 2026", "20th November 2026" },
+		{ "Sep 5, 2026", "Nov 20, 2026" },
+		{ "Sep 5 2026", "Nov 20 2026" },
+		{ "2026年9月5日", "2026年11月20日" },
+		{ "9月5日", "11月20日" },
+		{ "2026-09-05", "2026-11-20" },
+		{ "2026/09/05", "2026/11/20" },
+	}
+
+	local DateHooked = {}
+	local function FixDateLabel(inst)
+		pcall(function()
+			local txt = inst.Text
+			if typeof(txt) ~= "string" then return end
+			for _, fix in DateFixes do
+				if string.find(txt, fix[1], 1, true) then
+					local new = string.gsub(txt, fix[1], fix[2])
+					if new ~= txt then
+						inst.Text = new
+						txt = new
+					end
+				end
+			end
+		end)
+	end
+
+	local function HookDateLabel(inst)
+		if DateHooked[inst] then return end
+		if not (inst:IsA("TextLabel") or inst:IsA("TextButton")) then return end
+		DateHooked[inst] = true
+		FixDateLabel(inst)
+		pcall(function()
+			inst:GetPropertyChangedSignal("Text"):Connect(function()
+				FixDateLabel(inst)
+			end)
+		end)
+		inst.Destroying:Once(function()
+			DateHooked[inst] = nil
+		end)
+	end
+
+	local function ScanRoot(root)
+		pcall(function()
+			for _, d in ipairs(root:GetDescendants()) do
+				HookDateLabel(d)
+			end
+		end)
+	end
+
+	Globals.MainUI.DescendantAdded:Connect(HookDateLabel)
+	ScanRoot(Globals.MainUI)
+	-- UI 与状态信息是异步生成的：补扫两次兜底
+	task.delay(3, function()
+		ScanRoot(Globals.MainUI)
+		pcall(function() ScanRoot(GetHiddenContainer()) end)
+	end)
+	task.delay(20, function()
+		ScanRoot(Globals.MainUI)
+		pcall(function() ScanRoot(GetHiddenContainer()) end)
+	end)
+end)
+
 Abysall.Interface.ApplySettingsTab(Window)
 Functions.Notify({ Title = "加载成功，用时 " .. math.floor((tick() - LoadStart) * 1000) / 1000 .. " 秒。" , Body = "按 " .. tostring(Options.MenuKeybind.Value) .. " 键开关 UI。"})
---6767
+-- 已修复有先。房间不透视问题
